@@ -3,6 +3,7 @@
   "password": "xxxx-xxxx-xxxx-xxxx",
   "days_to_keep": {
     "posts": 20,
-    "reposts": 20 
-  }
+    "reposts": 20
+  },
+  "keep_pinned": true
 }
