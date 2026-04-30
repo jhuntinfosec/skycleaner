@@ -42,6 +42,46 @@ Set to `false` to disable this protection and allow the pinned post to be delete
 
 The script reads your profile record once at startup to determine the pinned post's rkey.  If you have no pinned post, or if the lookup fails, cleanup proceeds normally with no error.
 
+### min_replies / min_likes / min_reposts
+Preserve posts that have received at least this many replies, likes, or reposts respectively.
+
+Default: `0` — engagement filters are disabled; all posts are eligible for deletion.
+
+Set any value above `0` to activate the corresponding filter.  For example, `"min_likes": 10` preserves any post that has 10 or more likes regardless of age.
+
+When any of these three filters is non-zero, the script makes one additional API call per 25 posts to fetch live engagement counts.  If the API call fails for a batch, those posts are treated as having zero engagement and will not be preserved by these filters (media and tag filters still apply to them).
+
+### keep_threads
+Preserve posts that are parents of a surviving post (no-orphan semantics).
+
+Default: `false` — thread structure is not considered; posts are evaluated individually.
+
+Set to `true` to activate.  When enabled, if any post survives the cleanup (because it is within `days_to_keep`, pinned, or matched by another filter), all posts it replies to — and their ancestors in turn — are also preserved.  This prevents dangling reply chains where the reply survives but the post it replied to is gone.
+
+Only applies to `app.bsky.feed.post` records.  Reposts are unaffected.
+
+### keep_with_media
+Preserve posts that contain image, video, or mixed-media embeds.
+
+Default: `false` — embed type is not considered.
+
+Set to `true` to preserve any post with an `app.bsky.embed.images`, `app.bsky.embed.video`, or `app.bsky.embed.recordWithMedia` attachment.  Plain external link cards (`app.bsky.embed.external`) and plain quote-posts (`app.bsky.embed.record`) are not counted as media and will still be deleted.
+
+### keep_tags
+Preserve posts whose text contains any of the listed strings (case-insensitive substring match).
+
+Default: `[]` — tag filter is disabled.
+
+Set to a list of strings to activate.  For example:
+
+```json
+"keep_tags": ["#important", "pinned"]
+```
+
+This preserves any post whose text contains `#important` or `pinned` (in any capitalisation).  Include the `#` character in the string if you want to match a hashtag specifically rather than any word containing the text.
+
+Posts with no text (e.g. image-only posts) never match the tag filter.
+
 ## Run
 **YOU CAN NEVER GO BACK**
 ```bash

@@ -5,5 +5,11 @@
     "posts": 20,
     "reposts": 20
   },
-  "keep_pinned": true
+  "keep_pinned": true,
+  "min_replies": 0,
+  "min_likes": 0,
+  "min_reposts": 0,
+  "keep_threads": false,
+  "keep_with_media": false,
+  "keep_tags": []
 }
