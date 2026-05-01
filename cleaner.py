@@ -15,6 +15,7 @@ from atproto import Client, AtUri
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
+import re
 
 # Media embed py_type values that count as "real media" for keep_with_media.
 # Excludes app.bsky.embed.external (link cards) and app.bsky.embed.record
@@ -24,6 +25,50 @@ _MEDIA_EMBED_TYPES = {
     "app.bsky.embed.video",
     "app.bsky.embed.recordWithMedia",
 }
+
+
+# @decision DEC-FILTERS-004
+# @title Parse keep_tags into (kind, value) pairs once at startup; use /PATTERN/FLAGS for regex entries
+# @status accepted
+# @rationale
+#   (a) Syntax choice: /PATTERN/FLAGS was chosen over an object form (e.g.
+#       {"type": "regex", "pattern": "…", "flags": "i"}) because it keeps keep_tags
+#       as a flat list of strings — existing configs need no structural change, and
+#       there is no migration cost.  The /…/ delimiters are a widely-recognised regex
+#       literal convention (Perl, JavaScript, Ruby) so users who want regex will
+#       recognise the syntax without reading the documentation.  Plain strings that
+#       lack a leading / are treated as substrings unchanged, preserving full
+#       backwards-compatibility with every existing config.json.
+#   (b) Compilation at startup: re.compile() is called once in _parse_keep_tags,
+#       which is invoked from Config.__init__.  should_keep() receives the already-
+#       compiled pattern objects and calls .search() directly — no per-post string
+#       parsing or re-compilation.  This avoids O(N × T) redundant compilations
+#       (N posts, T tag entries) that would otherwise occur on every call.
+#   (c) Invalid regexes skipped, not fatal: a bad pattern in one entry should not
+#       abort the entire cleanup run.  The offending entry is printed at startup so
+#       the operator can identify and fix it; every other filter continues to work
+#       normally, and the remaining tag entries are still evaluated.
+_REGEX_ENTRY = re.compile(r'^/(.+)/([ims]*)$', re.DOTALL)
+_FLAG_MAP = {'i': re.IGNORECASE, 's': re.DOTALL, 'm': re.MULTILINE}
+
+
+def _parse_keep_tags(raw_tags):
+    parsed = []
+    for entry in raw_tags:
+        m = _REGEX_ENTRY.match(entry)
+        if m:
+            pattern, flags_str = m.group(1), m.group(2)
+            flags = 0
+            for ch in flags_str:
+                flags |= _FLAG_MAP.get(ch, 0)
+            try:
+                compiled = re.compile(pattern, flags)
+                parsed.append(("regex", compiled))
+            except re.error as exc:
+                print(f"warning: keep_tags entry {entry!r} is not a valid regex ({exc}); skipping")
+        else:
+            parsed.append(("substring", entry))
+    return parsed
 
 
 class Config():
@@ -36,6 +81,7 @@ class Config():
         self.keep_threads = False
         self.keep_with_media = False
         self.keep_tags = []
+        self.keep_tags_parsed = []
         self.delete_likes = False
 
         cfgfile = Path.cwd() / "config.json"
@@ -53,6 +99,7 @@ class Config():
             self.keep_threads = cfg.get("keep_threads", False)
             self.keep_with_media = cfg.get("keep_with_media", False)
             self.keep_tags = cfg.get("keep_tags", [])
+            self.keep_tags_parsed = _parse_keep_tags(self.keep_tags)
             self.delete_likes = cfg.get("delete_likes", False)
 
 
@@ -176,14 +223,18 @@ def should_keep(post, hydrated_view, config, pinned_rkey):
         if embed is not None and getattr(embed, "py_type", None) in _MEDIA_EMBED_TYPES:
             return (True, f"media ({embed.py_type})")
 
-    # Filter 6: tag match — case-insensitive substring on post.value.text.
-    # None or empty text never matches.
-    if config.keep_tags:
+    # Filter 6: tag match — plain substring or compiled regex against post.value.text.
+    # Entries are pre-parsed at startup (see DEC-FILTERS-004). None/empty text never matches.
+    if config.keep_tags_parsed:
         text = getattr(post.value, "text", None) or ""
         text_lower = text.lower()
-        for tag in config.keep_tags:
-            if tag.lower() in text_lower:
-                return (True, f"tag:{tag}")
+        for kind, value in config.keep_tags_parsed:
+            if kind == "substring":
+                if value.lower() in text_lower:
+                    return (True, f"tag:{value}")
+            else:
+                if value.search(text):
+                    return (True, f"tag:regex {value.pattern}")
 
     return (False, "delete")
 
