@@ -68,17 +68,34 @@ Default: `false` — embed type is not considered.
 Set to `true` to preserve any post with an `app.bsky.embed.images`, `app.bsky.embed.video`, or `app.bsky.embed.recordWithMedia` attachment.  Plain external link cards (`app.bsky.embed.external`) and plain quote-posts (`app.bsky.embed.record`) are not counted as media and will still be deleted.
 
 ### keep_tags
-Preserve posts whose text contains any of the listed strings (case-insensitive substring match).
+Preserve posts whose text contains any of the listed strings.
 
 Default: `[]` — tag filter is disabled.
 
-Set to a list of strings to activate.  For example:
+Each entry in the list uses one of two syntaxes:
+
+**Plain string** (default, unchanged behaviour): case-insensitive substring match against the post text.
 
 ```json
 "keep_tags": ["#important", "pinned"]
 ```
 
-This preserves any post whose text contains `#important` or `pinned` (in any capitalisation).  Include the `#` character in the string if you want to match a hashtag specifically rather than any word containing the text.
+This preserves any post whose text contains `#important` or `pinned` (in any capitalisation).  Include the `#` character if you want to match a hashtag specifically rather than any word containing the text.
+
+**Regex** — a string of the form `/PATTERN/FLAGS`:
+
+```json
+"keep_tags": ["#important", "/^#proj-/i", "/\\brelease\\b/im"]
+```
+
+- `/^#proj-/i` — matches posts whose text starts with `#proj-` (case-insensitive).
+- `/\brelease\b/im` — matches posts containing the whole word `release` across multiple lines, case-insensitively.
+
+Supported flags: `i` (`re.IGNORECASE`), `s` (`re.DOTALL`), `m` (`re.MULTILINE`).  Empty flags (`/PATTERN/`) are allowed.
+
+If a regex entry fails to compile, a warning is printed at startup naming the offending entry, that entry is skipped, and all other entries continue to work normally.  Plain strings are never affected.
+
+Plain strings from existing config files continue to work without any change.
 
 Posts with no text (e.g. image-only posts) never match the tag filter.
 

@@ -11,5 +11,5 @@
   "min_reposts": 0,
   "keep_threads": false,
   "keep_with_media": false,
-  "keep_tags": []
+  "keep_tags": ["#important", "/^#proj-/i"]
 }
