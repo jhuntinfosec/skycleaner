@@ -36,6 +36,7 @@ class Config():
         self.keep_threads = False
         self.keep_with_media = False
         self.keep_tags = []
+        self.delete_likes = False
 
         cfgfile = Path.cwd() / "config.json"
         if cfgfile.exists():
@@ -52,6 +53,7 @@ class Config():
             self.keep_threads = cfg.get("keep_threads", False)
             self.keep_with_media = cfg.get("keep_with_media", False)
             self.keep_tags = cfg.get("keep_tags", [])
+            self.delete_likes = cfg.get("delete_likes", False)
 
 
 config = Config()
@@ -104,6 +106,11 @@ def paginated_list_records(cli, repo, collection):
             break
 
     return records
+
+
+def _resolve_likes_days(days_to_keep):
+    """Return retention days for likes, falling back to days_to_keep["posts"]."""
+    return days_to_keep.get("likes", days_to_keep["posts"])
 
 
 # @decision DEC-FILTERS-001
@@ -336,7 +343,39 @@ for uri_str, descriptor in candidate_deletes.items():
     deletes.append(descriptor)
 
 
-print(f'{datetime.now()} COMMENCE DELETE: {len(deletes)} posts/reposts')
+# @decision DEC-LIKES-001
+# @title No keep-filters for likes; days_to_keep.likes falls back to days_to_keep.posts
+# @status accepted
+# @rationale Like records contain only a subject URI and a timestamp — they carry no
+#   text, embeds, engagement counts, or reply structure of their own.  Every keep-filter
+#   in should_keep (pinned post, min_replies/min_likes/min_reposts, keep_with_media,
+#   keep_tags) inspects fields that simply do not exist on a like record, so applying
+#   those filters would be nonsensical.  Age is the only meaningful retention axis for
+#   likes; date-cutoff deletion is therefore applied directly without any filter step.
+#   When the "likes" key is absent from days_to_keep the script falls back to
+#   days_to_keep["posts"] rather than days_to_keep["reposts"]: "posts" is the primary,
+#   most visible retention window and the natural general-purpose default; reposts
+#   already have their own explicit key and their value may intentionally differ.
+#   The fallback preserves full backwards compatibility — existing config.json files
+#   that predate delete_likes require no changes to opt in to a sensible default window.
+if config.delete_likes:
+    likes_days = _resolve_likes_days(config.days_to_keep)
+    likes_hold_datetime = now - timedelta(days=likes_days)
+    like_records = paginated_list_records(cli, config.username, "app.bsky.feed.like")
+    print(f"app.bsky.feed.like: {len(like_records)}")
+    for like in reversed(like_records):
+        z_index_in_created_at = like.value.created_at.index('Z')
+        like_created_at = datetime.fromisoformat(like.value.created_at[:z_index_in_created_at+1])
+        if like_created_at <= likes_hold_datetime:
+            uri = AtUri.from_str(like.uri)
+            deletes.append({
+                "$type": "com.atproto.repo.applyWrites#delete",
+                "rkey": uri.rkey,
+                "collection": "app.bsky.feed.like",
+            })
+
+
+print(f'{datetime.now()} COMMENCE DELETE: {len(deletes)} records (posts/reposts/likes)')
 if len(deletes) > 0:
     for i in range(0, len(deletes), 200):
         cli.com.atproto.repo.apply_writes({"repo": config.username, "writes": deletes[i:i+200]})
