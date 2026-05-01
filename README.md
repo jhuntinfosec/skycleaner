@@ -29,9 +29,21 @@ cp config.example.json config.json
 ```
 
 ### days_to_keep
-Avoid deleting posts/reposts configured duration. 
+Avoid deleting posts/reposts/likes configured duration.
 
 Set as **days**.
+
+Each content type has its own optional key:
+
+```json
+"days_to_keep": {
+  "posts": 20,
+  "reposts": 20,
+  "likes": 20
+}
+```
+
+The `reposts` key has always been required alongside `posts`.  The `likes` key is optional: if absent, the script falls back to `days_to_keep.posts` as the retention window for likes.  This means existing `config.json` files require no changes when enabling `delete_likes`.
 
 ### keep_pinned
 Preserve your currently-pinned post regardless of age.
@@ -98,6 +110,25 @@ If a regex entry fails to compile, a warning is printed at startup naming the of
 Plain strings from existing config files continue to work without any change.
 
 Posts with no text (e.g. image-only posts) never match the tag filter.
+
+### delete_likes
+Delete your liked posts older than `days_to_keep.likes` (or `days_to_keep.posts` if the `likes` key is absent).
+
+Default: `false` — likes are not touched.
+
+**WARNING: this is destructive and irreversible, exactly like post and repost deletion.  Once a like is removed it cannot be recovered.**
+
+Set to `true` to enable:
+
+```json
+"delete_likes": true
+```
+
+No keep-filters apply to likes.  Like records contain only a subject URI and a timestamp; they carry no text, embeds, engagement counts, or reply structure, so the `min_replies`, `min_likes`, `min_reposts`, `keep_with_media`, `keep_tags`, and `keep_pinned` flags are ignored for this collection.  Age is the only retention axis for likes.
+
+The retention window is resolved as follows:
+1. Use `days_to_keep.likes` if the key is present.
+2. Otherwise fall back to `days_to_keep.posts`.
 
 ## Run
 **YOU CAN NEVER GO BACK**

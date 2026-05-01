@@ -3,7 +3,8 @@
   "password": "xxxx-xxxx-xxxx-xxxx",
   "days_to_keep": {
     "posts": 20,
-    "reposts": 20
+    "reposts": 20,
+    "likes": 20
   },
   "keep_pinned": true,
   "min_replies": 0,
@@ -12,4 +13,6 @@
   "keep_threads": false,
   "keep_with_media": false,
   "keep_tags": ["#important", "/^#proj-/i"]
+  "keep_tags": [],
+  "delete_likes": false
 }
